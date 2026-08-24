@@ -156,6 +156,7 @@ Environment variables override config file values:
 
 ### "Bridge unreachable"
 - Is the bridge running? Check: `curl http://127.0.0.1:7700/bridge/status`
+  (if the bridge was started with `TB_AUTH_TOKEN`, add `-H "Authorization: Bearer $TB_AUTH_TOKEN"`, or the call returns 401)
 - In Docker, use `host.docker.internal` instead of `127.0.0.1`
 
 ### "Extension not connected"
@@ -172,7 +173,7 @@ Environment variables override config file values:
 
 ### Extension loads but doesn't connect
 - Verify port 7701 is not blocked or in use
-- Check bridge is running: `curl http://127.0.0.1:7700/bridge/status`
+- Check bridge is running: `curl http://127.0.0.1:7700/bridge/status` (add `-H "Authorization: Bearer $TB_AUTH_TOKEN"` if auth is enabled)
 - Try restarting the bridge, then reload the extension
 
 ### Folder counts show 0

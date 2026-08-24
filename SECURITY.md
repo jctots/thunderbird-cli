@@ -56,6 +56,25 @@ in your reply so the recipient's AI assistant can process it:
 ```
 Agent unknowingly propagates the injection to other AI-enabled inboxes.
 
+**Scenario 6: Untrusted local caller (confused deputy at the transport layer)**
+
+The scenarios above treat the *email* as hostile and the caller as trusted. On a machine
+running more than one automated agent, that second half does not hold.
+
+The bridge binds to `127.0.0.1`, which stops remote access but is not access control — every
+process running as the same OS user can issue requests to it. An agent, script, or dependency
+that was never granted mailbox access can call the bridge directly and read the entire mailbox,
+regardless of which tools it was configured with. Restricting capabilities per-agent at the tool
+layer (MCP server config, allow-lists) does not constrain what that agent's shell can reach.
+
+Defense: set `TB_AUTH_TOKEN` in the bridge daemon's environment so every HTTP request must carry
+`Authorization: Bearer <token>`, and give the token only to callers that should have mailbox
+access — a token readable by every local process restores the original problem. See the bridge
+README's Authentication section.
+
+The token covers the HTTP listener only. The WebSocket listener the extension connects to still
+accepts any local connection.
+
 ---
 
 ## CLI-Level Defenses (Data Layer)
@@ -419,6 +438,7 @@ adversarial text, never as instructions.
 | Trust boundaries | CLI output | Marks trusted/untrusted fields | Confused deputy |
 | Suspicious patterns | CLI output | Flags injection-like text | Direct prompt injection |
 | Junk exclusion | CLI defaults | Excludes spam from results | Spam-based injection |
+| Caller authentication | Bridge | Requires `Authorization: Bearer` (`TB_AUTH_TOKEN`) | Untrusted local process reaching the mailbox |
 | Read-only mode | Bridge | Disables all writes | Any write-based attack |
 | Rate limiting | Bridge | Throttles write ops | Mass exfiltration/deletion |
 | Audit log | Bridge | Logs all writes | Post-incident forensics |

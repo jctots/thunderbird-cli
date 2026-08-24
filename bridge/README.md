@@ -17,7 +17,7 @@ HTTP client (CLI / MCP / curl) ──HTTP→ tb-bridge ──WS→ Thunderbird E
 ```
 
 - **Stateless** — each request gets a UUID, response correlated, then forgotten
-- **Localhost-only** — listens on `127.0.0.1` (no external exposure)
+- **Localhost-only** — listens on `127.0.0.1` (no external exposure). Note that this bounds *remote* access only: any process running as the same OS user can reach the bridge. Set `TB_AUTH_TOKEN` to require a token — see [Authentication](#authentication)
 - **Auto-reconnect on the extension side** — if Thunderbird restarts, the extension reconnects within 3s
 - **Zero config** — works out of the box with default ports
 
@@ -37,6 +37,7 @@ You should see:
 ```
 [bridge] HTTP server on http://127.0.0.1:7700
 [bridge] WebSocket server on ws://127.0.0.1:7701
+[bridge] Auth: disabled — any local process can call this bridge (set TB_AUTH_TOKEN to require a token)
 [bridge] Waiting for Thunderbird extension to connect...
 ```
 
@@ -51,11 +52,48 @@ pm2 save
 nohup tb-bridge > ~/.tb-bridge.log 2>&1 &
 ```
 
+## Authentication
+
+Binding to `127.0.0.1` keeps the bridge off the network, but it is not access control: every
+process running as the same OS user can reach it, including any local agent or script that was
+never wired up to the CLI. Where that matters — a shared machine, or an AI agent that should not
+have mailbox access — set a token:
+
+```bash
+TB_AUTH_TOKEN=$(openssl rand -hex 32) tb-bridge
+```
+
+The startup banner then reports `[bridge] Auth: enabled`, and every HTTP request must carry it:
+
+```bash
+curl -H "Authorization: Bearer $TB_AUTH_TOKEN" http://127.0.0.1:7700/bridge/status
+```
+
+Requests with a missing, malformed, or incorrect token get `401` with a JSON error body. The
+comparison is constant-time. `tb` and `tb-mcp` send the header automatically when `TB_AUTH_TOKEN`
+is set in their environment or `bridge.authToken` in `~/.config/thunderbird-cli/config.json`.
+
+Two behaviours are deliberate:
+
+- **Unset `TB_AUTH_TOKEN` disables authentication** and the bridge says so at startup. This keeps
+  the default zero-config setup working.
+- **An empty `TB_AUTH_TOKEN` is refused at startup.** Failing open on an empty value would leave
+  the bridge unauthenticated with nothing in the log to say so. Unset the variable to run without
+  auth.
+
+Give the token only to the callers that should have mailbox access — putting it somewhere every
+local process can read it (a world-readable file, a shared shell profile) puts you back where you
+started.
+
+> The WebSocket listener on `:7701`, which the Thunderbird extension connects to, is **not**
+> covered by `TB_AUTH_TOKEN`.
+
 ## Endpoints
 
 ### `GET /bridge/status`
 
 Returns bridge state without requiring the extension. Use this to check the daemon is up.
+Subject to authentication when `TB_AUTH_TOKEN` is set.
 
 ```bash
 curl http://127.0.0.1:7700/bridge/status

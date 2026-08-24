@@ -37,5 +37,8 @@ jobs:
       - name: Run CLI/bridge integration tests (mock)
         run: npm test
 
+      - name: Run bridge authentication tests (real bridge process)
+        run: npm run test:bridge-auth
+
       - name: Run MCP server integration tests (mock)
         run: npm run test:mcp

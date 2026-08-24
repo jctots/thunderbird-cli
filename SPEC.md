@@ -553,7 +553,21 @@ Config file: `~/.config/thunderbird-cli/config.json`
 Environment variables override config:
 - `TB_BRIDGE_HOST` — bridge host (for Docker: `host.docker.internal`)
 - `TB_BRIDGE_PORT` — bridge HTTP port
-- `TB_AUTH_TOKEN` — auth token
+- `TB_AUTH_TOKEN` — auth token, sent as `Authorization: Bearer <token>`
+
+### Authentication
+
+The bridge binds to `127.0.0.1`, which prevents remote access but not local access: any process
+running as the same OS user can call it. Setting `TB_AUTH_TOKEN` in the **bridge daemon's own
+environment** makes it require `Authorization: Bearer <token>` on every HTTP request, answering
+`401` otherwise. Clients send the header when the same token is in their environment or in
+`bridge.authToken`.
+
+- Unset on the daemon → authentication disabled (default), reported at startup.
+- Set but empty on the daemon → startup is refused, rather than silently running unauthenticated.
+
+The token gates the HTTP listener only. The WebSocket listener the extension connects to is not
+covered by it.
 
 ### Error Codes
 
@@ -561,6 +575,7 @@ Environment variables override config:
 |------|---------|
 | `BRIDGE_UNREACHABLE` | Bridge is not running |
 | `EXTENSION_DISCONNECTED` | Thunderbird extension not connected to bridge |
+| `AUTH_REQUIRED` | Bridge requires `TB_AUTH_TOKEN`; the request had none or the wrong one |
 | `TIMEOUT` | Request to extension timed out (30s) |
 | `NOT_FOUND` | Message/folder/account not found |
 | `INVALID_ARGS` | Bad CLI arguments |
@@ -745,7 +760,7 @@ Note: Extension development cannot happen in Docker. Edit `extension/src/backgro
 - [ ] Progress output for long-running bulk operations
 
 ### Phase 5: Polish
-- [ ] Auth token support (bridge + CLI)
+- [x] Auth token support (bridge + CLI)
 - [x] Config file support (~/.config/thunderbird-cli/config.json)
 - [x] Environment variable overrides
 - [x] `--timeout` flag

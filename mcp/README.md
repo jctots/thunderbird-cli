@@ -194,6 +194,7 @@ See [SECURITY.md](https://github.com/vitalio-sh/thunderbird-cli/blob/main/SECURI
 
 ### "Bridge unreachable" / connection errors
 - Is the bridge daemon running on `127.0.0.1:7700`? Test: `curl http://127.0.0.1:7700/bridge/status`
+  (if the bridge was started with `TB_AUTH_TOKEN`, add `-H "Authorization: Bearer $TB_AUTH_TOKEN"`, or the call returns 401)
 - Is Thunderbird running with the extension loaded?
 - Check Thunderbird's add-on debugging console for WebSocket errors
 

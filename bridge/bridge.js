@@ -11,17 +11,42 @@
  *
  * Environment variables:
  *   TB_BRIDGE_TIMEOUT  default per-request timeout in ms (default: 120000)
+ *   TB_AUTH_TOKEN      if set, HTTP requests must present it as `Authorization: Bearer <token>`.
+ *                      Unset it to run without authentication. Setting it to an empty value is
+ *                      rejected at startup rather than silently disabling authentication.
  *
  * Per-request override: HTTP clients can pass `X-TB-Timeout: <ms>` header.
  */
 
 import { createServer } from "http";
 import { WebSocketServer } from "ws";
-import { randomUUID } from "crypto";
+import { randomUUID, timingSafeEqual } from "crypto";
 
 const HTTP_PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === "--port") || "7700");
 const WS_PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === "--ws-port") || "7701");
 const DEFAULT_TIMEOUT = parseInt(process.env.TB_BRIDGE_TIMEOUT || "120000");
+// An empty TB_AUTH_TOKEN is a misconfiguration, not a way to disable auth. Failing open here
+// would leave the bridge reachable by any local process with nothing in the log to say so.
+const RAW_AUTH_TOKEN = process.env.TB_AUTH_TOKEN;
+if (RAW_AUTH_TOKEN !== undefined && RAW_AUTH_TOKEN.trim() === "") {
+  console.error(
+    "[bridge] TB_AUTH_TOKEN is set but empty. Refusing to start rather than silently " +
+      "disabling authentication — unset the variable to run without auth."
+  );
+  process.exit(1);
+}
+const AUTH_TOKEN = RAW_AUTH_TOKEN ?? null;
+
+function isAuthorized(req) {
+  if (!AUTH_TOKEN) return true;
+  // RFC 7235: the auth scheme is case-insensitive. Require exactly "<scheme> <token>".
+  const parts = (req.headers["authorization"] || "").split(" ");
+  if (parts.length !== 2 || parts[0].toLowerCase() !== "bearer") return false;
+  const expected = Buffer.from(AUTH_TOKEN);
+  const actual = Buffer.from(parts[1]);
+  if (expected.length !== actual.length) return false;
+  return timingSafeEqual(expected, actual);
+}
 
 let extensionSocket = null;
 const pending = new Map(); // id → { resolve, reject, timer }
@@ -91,6 +116,17 @@ const httpServer = createServer(async (req, res) => {
     return;
   }
 
+  if (!isAuthorized(req)) {
+    res.writeHead(401);
+    res.end(
+      JSON.stringify({
+        error: "Missing or invalid Authorization token. Set TB_AUTH_TOKEN for this client.",
+        code: "AUTH_REQUIRED",
+      })
+    );
+    return;
+  }
+
   // Bridge status endpoint (doesn't need extension)
   if (req.url === "/bridge/status") {
     const status = {
@@ -144,5 +180,10 @@ httpServer.listen(HTTP_PORT, "127.0.0.1", () => {
   console.log(`[bridge] HTTP server on http://127.0.0.1:${HTTP_PORT}`);
   console.log(`[bridge] WebSocket server on ws://127.0.0.1:${WS_PORT}`);
   console.log(`[bridge] Default timeout: ${DEFAULT_TIMEOUT}ms (override via TB_BRIDGE_TIMEOUT env or X-TB-Timeout header)`);
+  console.log(
+    AUTH_TOKEN
+      ? "[bridge] Auth: enabled (Authorization: Bearer required on all HTTP requests)"
+      : "[bridge] Auth: disabled — any local process can call this bridge (set TB_AUTH_TOKEN to require a token)"
+  );
   console.log(`[bridge] Waiting for Thunderbird extension to connect...`);
 });
